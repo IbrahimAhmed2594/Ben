@@ -1,1 +1,51 @@
 
+!pip install -q openai-whisper ffmpeg-python
+
+# Upload audio file (Zoom .m4a or similar)
+from google.colab import files
+uploaded = files.upload()
+audio_file = list(uploaded.keys())[0]
+
+# Load Whisper model (use "tiny" or "small" for speed)
+import whisper
+model = whisper.load_model("tiny")
+
+# Transcribe the audio
+result = model.transcribe(audio_file, word_timestamps=False)
+segments = result["segments"]
+
+# Format into fake speaker turns (alternating labels every ~30 sec)
+from datetime import timedelta
+
+def format_time(seconds):
+    return str(timedelta(seconds=int(seconds)))
+
+output = []
+current_speaker = 1
+current_block = []
+block_start = segments[0]['start']
+
+for seg in segments:
+    if seg['start'] - block_start > 30:
+        # Print block
+        block_text = " ".join([s['text'] for s in current_block]).strip()
+        output.append(f"[{format_time(block_start)}] Speaker {current_speaker}: {block_text}")
+        # Flip speaker
+        current_speaker = 2 if current_speaker == 1 else 1
+        # Reset block
+        block_start = seg['start']
+        current_block = []
+    current_block.append(seg)
+
+# Last chunk
+if current_block:
+    block_text = " ".join([s['text'] for s in current_block]).strip()
+    output.append(f"[{format_time(block_start)}] Speaker {current_speaker}: {block_text}")
+
+# Save the output
+with open("fast_transcript.txt", "w", encoding="utf-8") as f:
+    f.write("\n\n".join(output))
+
+# Download it
+files.download("fast_transcript.txt")
+
